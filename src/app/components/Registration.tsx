@@ -90,7 +90,10 @@ export function Registration() {
     try {
       const createdUser = await registerUser(formData);
       const newUser: StoredUser = {
-        ...formData,
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        password: "",
         id: createdUser.id,
         createdAt: createdUser.createdAt,
       };

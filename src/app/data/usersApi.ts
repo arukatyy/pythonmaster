@@ -58,3 +58,12 @@ export async function registerUser(input: RegisterUserInput) {
   window.dispatchEvent(new Event("users-updated"));
   return payload.user;
 }
+
+export async function updateUserPassword(userId: number, password: string) {
+  const payload = await request<{ user: ApiUser }>(`/api/users/${userId}/password`, {
+    method: "PATCH",
+    body: JSON.stringify({ password }),
+  });
+
+  return payload.user;
+}

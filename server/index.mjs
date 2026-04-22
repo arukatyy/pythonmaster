@@ -3,6 +3,7 @@ import { mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process, { loadEnvFile } from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
+import { hashSync } from 'bcryptjs';
 
 const envPath = resolve(process.cwd(), '.env');
 
@@ -118,10 +119,10 @@ function seedUsers() {
   `);
 
   const demoUsers = [
-    ['Асхат Нұрланов', 'askhat.n@example.com', '+7 701 234 5678', 'demo123', 'customer', 'Python Basics', 75, 'active', '2026-01-15T09:00:00.000Z', '2026-01-15T09:00:00.000Z'],
-    ['Айгерім Сапарова', 'aigerim.s@example.com', '+7 702 345 6789', 'demo123', 'customer', 'Data Science', 45, 'active', '2026-02-20T09:00:00.000Z', '2026-02-20T09:00:00.000Z'],
-    ['Ернар Қайратов', 'ernar.k@example.com', '+7 705 456 7890', 'demo123', 'customer', 'Web Development', 92, 'active', '2026-01-08T09:00:00.000Z', '2026-01-08T09:00:00.000Z'],
-    ['Дина Әбілова', 'dina.a@example.com', '+7 707 567 8901', 'demo123', 'customer', 'Python Basics', 30, 'active', '2026-03-12T09:00:00.000Z', '2026-03-12T09:00:00.000Z'],
+    ['Асхат Нұрланов', 'askhat.n@example.com', '+7 701 234 5678', hashSync('demo123', 10), 'customer', 'Python Basics', 75, 'active', '2026-01-15T09:00:00.000Z', '2026-01-15T09:00:00.000Z'],
+    ['Айгерім Сапарова', 'aigerim.s@example.com', '+7 702 345 6789', hashSync('demo123', 10), 'customer', 'Data Science', 45, 'active', '2026-02-20T09:00:00.000Z', '2026-02-20T09:00:00.000Z'],
+    ['Ернар Қайратов', 'ernar.k@example.com', '+7 705 456 7890', hashSync('demo123', 10), 'customer', 'Web Development', 92, 'active', '2026-01-08T09:00:00.000Z', '2026-01-08T09:00:00.000Z'],
+    ['Дина Әбілова', 'dina.a@example.com', '+7 707 567 8901', hashSync('demo123', 10), 'customer', 'Python Basics', 30, 'active', '2026-03-12T09:00:00.000Z', '2026-03-12T09:00:00.000Z'],
   ];
 
   for (const user of demoUsers) {
@@ -178,15 +179,33 @@ function seedProducts() {
   }
 }
 
+function migratePlaintextPasswords() {
+  const legacyUsers = db.prepare(`
+    SELECT id, password
+    FROM users
+  `).all().filter((user) => typeof user.password === 'string' && !user.password.startsWith('$2'));
+
+  const updatePassword = db.prepare(`
+    UPDATE users
+    SET password = ?, updated_at = ?
+    WHERE id = ?
+  `);
+
+  for (const user of legacyUsers) {
+    updatePassword.run(hashSync(user.password, 10), new Date().toISOString(), user.id);
+  }
+}
+
 seedUsers();
 seedCategories();
 seedProducts();
+migratePlaintextPasswords();
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   });
 
@@ -281,8 +300,17 @@ function validateUserPayload(payload) {
   return null;
 }
 
+function validatePassword(password) {
+  if (typeof password !== 'string' || password.length < 6 || !/\d/.test(password)) {
+    return 'Пароль кемінде 6 символ және 1 саннан тұруы керек';
+  }
+
+  return null;
+}
+
 function createUser(payload) {
   const now = new Date().toISOString();
+  const passwordHash = hashSync(payload.password, 10);
   const insert = db.prepare(`
     INSERT INTO users (name, email, phone, password, role, course, progress, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'customer', 'Жаңа тіркелуші', 0, 'active', ?, ?)
@@ -300,7 +328,30 @@ function createUser(payload) {
       updated_at AS updatedAt
   `);
 
-  return insert.get(payload.fullName.trim(), payload.email.trim().toLowerCase(), payload.phone.trim(), payload.password, now, now);
+  return insert.get(payload.fullName.trim(), payload.email.trim().toLowerCase(), payload.phone.trim(), passwordHash, now, now);
+}
+
+function updateUserPassword(userId, password) {
+  const passwordHash = hashSync(password, 10);
+  const now = new Date().toISOString();
+
+  return db.prepare(`
+    UPDATE users
+    SET password = ?, updated_at = ?
+    WHERE id = ?
+    RETURNING
+      id,
+      name,
+      email,
+      phone,
+      course,
+      progress,
+      status,
+      role,
+      avatar_url AS avatarUrl,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+  `).get(passwordHash, now, userId);
 }
 
 function getHealthPayload() {
@@ -339,7 +390,7 @@ const server = createServer((request, response) => {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
     response.end();
@@ -394,6 +445,33 @@ const server = createServer((request, response) => {
 
         const user = createUser(payload);
         sendJson(response, 201, { ok: true, user });
+      })
+      .catch((error) => {
+        sendJson(response, 400, {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Сұранысты өңдеу кезінде қате болды',
+        });
+      });
+    return;
+  }
+
+  const passwordMatch = requestUrl.pathname.match(/^\/api\/users\/(\d+)\/password$/);
+  if (request.method === 'PATCH' && passwordMatch) {
+    readRequestBody(request)
+      .then((payload) => {
+        const validationError = validatePassword(payload.password);
+        if (validationError) {
+          sendJson(response, 400, { ok: false, message: validationError });
+          return;
+        }
+
+        const user = updateUserPassword(Number(passwordMatch[1]), payload.password);
+        if (!user) {
+          sendJson(response, 404, { ok: false, message: 'User табылмады' });
+          return;
+        }
+
+        sendJson(response, 200, { ok: true, user });
       })
       .catch((error) => {
         sendJson(response, 400, {

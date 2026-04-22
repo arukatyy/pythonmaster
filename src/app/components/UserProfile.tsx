@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { getAllCourses } from "../data/courses";
 import { getEnrollments, updateEnrollmentProgress, type EnrollmentItem } from "../data/appState";
+import { updateUserPassword } from "../data/usersApi";
 
 type LessonView = {
   id: string;
@@ -40,9 +41,9 @@ const achievements = [
 ];
 
 type StoredUser = {
+  id?: number;
   fullName?: string;
   email?: string;
-  password?: string;
   avatarUrl?: string;
 };
 
@@ -167,7 +168,7 @@ export function UserProfile() {
     fileReader.readAsDataURL(file);
   };
 
-  const handlePasswordChange = (event: FormEvent<HTMLFormElement>) => {
+  const handlePasswordChange = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (newPassword.length < 6) {
       setPasswordMessage("Пароль кемінде 6 символ болуы керек.");
@@ -177,11 +178,21 @@ export function UserProfile() {
       setPasswordMessage("Парольдер сәйкес емес.");
       return;
     }
+
     const currentUser = JSON.parse(localStorage.getItem("currentUser") ?? "{}") as StoredUser;
-    localStorage.setItem("currentUser", JSON.stringify({ ...currentUser, password: newPassword }));
-    setPasswordMessage("Пароль сәтті жаңартылды.");
-    setNewPassword("");
-    setConfirmPassword("");
+    if (!currentUser.id) {
+      setPasswordMessage("Парольді жаңарту үшін қайта тіркеліп кіріңіз.");
+      return;
+    }
+
+    try {
+      await updateUserPassword(currentUser.id, newPassword);
+      setPasswordMessage("Пароль серверде қауіпсіз жаңартылды.");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      setPasswordMessage(error instanceof Error ? error.message : "Парольді жаңарту мүмкін болмады.");
+    }
   };
 
   const handleDownloadCertificate = (courseTitle: string) => {
