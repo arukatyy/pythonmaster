@@ -13,15 +13,28 @@ import {
   ChevronRight,
   Download,
   FileText,
+  Timer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAllCourses } from "../data/courses";
 import { addNotification, addToCart, enrollInCourse, getEnrollments } from "../data/appState";
 
+function formatTimer(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function CourseDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [courses, setCourses] = useState(getAllCourses());
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [quizFinished, setQuizFinished] = useState(false);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [quizScore, setQuizScore] = useState(0);
 
   useEffect(() => {
     const syncCourses = () => setCourses(getAllCourses());
@@ -55,6 +68,50 @@ export function CourseDetail() {
 
   const isUploadedVideo = course.videoType === "file" || course.videoUrl.startsWith("data:video");
   const isEnrolled = getEnrollments().some((item) => item.courseId === course.id);
+  const materials = course.materials ?? [];
+  const quizQuestions = course.quiz ?? [];
+  const currentQuestion = quizQuestions[activeQuestionIndex] ?? null;
+
+  useEffect(() => {
+    setQuizStarted(false);
+    setQuizFinished(false);
+    setActiveQuestionIndex(0);
+    setSelectedAnswers(Array(quizQuestions.length).fill(-1));
+    setTimeLeft(60);
+    setQuizScore(0);
+  }, [course.id, quizQuestions.length]);
+
+  useEffect(() => {
+    if (!quizStarted || quizFinished || quizQuestions.length === 0) return;
+
+    const timerId = window.setInterval(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [quizStarted, quizFinished, activeQuestionIndex, quizQuestions.length]);
+
+  useEffect(() => {
+    if (!quizStarted || quizFinished) return;
+
+    if (timeLeft > 0) {
+      return;
+    }
+
+    if (activeQuestionIndex === quizQuestions.length - 1) {
+      const nextScore = selectedAnswers.reduce((score, answer, index) => {
+        return score + (answer === quizQuestions[index]?.correctAnswer ? 1 : 0);
+      }, 0);
+
+      setQuizScore(nextScore);
+      setQuizFinished(true);
+      setQuizStarted(false);
+      return;
+    }
+
+    setActiveQuestionIndex((prev) => prev + 1);
+    setTimeLeft(60);
+  }, [activeQuestionIndex, quizFinished, quizQuestions, quizStarted, selectedAnswers, timeLeft]);
 
   const ensureRegistered = () => {
     const currentUser = localStorage.getItem("currentUser");
@@ -98,6 +155,39 @@ export function CourseDetail() {
     });
     toast.success("Курс сәтті сатып алынды");
     navigate("/profile");
+  };
+
+  const handleStartQuiz = () => {
+    setSelectedAnswers(Array(quizQuestions.length).fill(-1));
+    setActiveQuestionIndex(0);
+    setQuizScore(0);
+    setQuizFinished(false);
+    setQuizStarted(true);
+    setTimeLeft(60);
+  };
+
+  const handleSelectAnswer = (answerIndex: number) => {
+    setSelectedAnswers((prev) => {
+      const nextAnswers = [...prev];
+      nextAnswers[activeQuestionIndex] = answerIndex;
+      return nextAnswers;
+    });
+  };
+
+  const handleNextQuestion = () => {
+    if (activeQuestionIndex === quizQuestions.length - 1) {
+      const nextScore = selectedAnswers.reduce((score, answer, index) => {
+        return score + (answer === quizQuestions[index]?.correctAnswer ? 1 : 0);
+      }, 0);
+
+      setQuizScore(nextScore);
+      setQuizFinished(true);
+      setQuizStarted(false);
+      return;
+    }
+
+    setActiveQuestionIndex((prev) => prev + 1);
+    setTimeLeft(60);
   };
 
   return (
@@ -240,6 +330,150 @@ export function CourseDetail() {
 
               <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
                 <h2 className="mb-6 flex items-center gap-2 text-3xl font-bold">
+                  <FileText className="h-8 w-8 text-primary" />
+                  Материалдар
+                </h2>
+
+                <div className="space-y-3 rounded-xl border border-border bg-card p-5">
+                  {materials.length > 0 ? (
+                    materials.map((material) => (
+                      <a
+                        key={`${material.name}-${material.url}`}
+                        href={material.url}
+                        download={material.name}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-4 transition-all hover:border-primary/40 hover:bg-accent"
+                      >
+                        <div>
+                          <div className="font-semibold">{material.name}</div>
+                          <div className="text-xs text-muted-foreground">{material.sizeLabel}</div>
+                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary/30 px-3 py-2 text-xs font-semibold text-primary">
+                          <Download className="h-4 w-4" />
+                          Жүктеу
+                        </span>
+                      </a>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Бұл курсқа материалдар әлі жүктелмеген.</p>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+                <h2 className="mb-6 flex items-center gap-2 text-3xl font-bold">
+                  <Timer className="h-8 w-8 text-primary" />
+                  Курс тесті
+                </h2>
+
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <div className="mb-6 flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-lg font-semibold">10 сұрақ, әр сұраққа 1 минут</div>
+                      <p className="text-sm text-muted-foreground">
+                        Таймер әр сұрақ сайын қайта басталады. Уақыт бітсе, жүйе келесі сұраққа автоматты өтеді.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartQuiz}
+                      className="rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground transition-all hover:bg-primary/90"
+                    >
+                      {quizFinished ? "Тестті қайта бастау" : quizStarted ? "Қайта бастау" : "Тестті бастау"}
+                    </button>
+                  </div>
+
+                  {quizFinished ? (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-primary/30 bg-primary/10 p-5">
+                        <div className="text-sm font-semibold text-primary">Нәтиже</div>
+                        <div className="mt-2 text-3xl font-bold">
+                          {quizScore} / {quizQuestions.length}
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Дұрыс жауап саны көрсетілді. Қаласаңыз тестті қайтадан тапсыра аласыз.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        {quizQuestions.map((question, index) => (
+                          <div key={question.question} className="rounded-xl border border-border p-4">
+                            <div className="mb-2 flex items-start justify-between gap-4">
+                              <div className="font-semibold">
+                                {index + 1}. {question.question}
+                              </div>
+                              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                {selectedAnswers[index] === question.correctAnswer ? "Дұрыс" : "Қате"}
+                              </span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Дұрыс жауап: {question.options[question.correctAnswer]}
+                            </div>
+                            <div className="mt-2 text-sm text-muted-foreground">{question.explanation}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : quizStarted && currentQuestion ? (
+                    <div>
+                      <div className="mb-5 flex flex-col gap-3 rounded-xl border border-border bg-background p-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-primary">
+                            Сұрақ {activeQuestionIndex + 1} / {quizQuestions.length}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Таңдалған жауап:{" "}
+                            {selectedAnswers[activeQuestionIndex] >= 0
+                              ? currentQuestion.options[selectedAnswers[activeQuestionIndex]]
+                              : "Әлі таңдалмады"}
+                          </div>
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 font-semibold text-primary">
+                          <Timer className="h-4 w-4" />
+                          {formatTimer(timeLeft)}
+                        </div>
+                      </div>
+
+                      <h3 className="mb-4 text-xl font-bold">{currentQuestion.question}</h3>
+
+                      <div className="space-y-3">
+                        {currentQuestion.options.map((option, index) => (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => handleSelectAnswer(index)}
+                            className={`w-full rounded-xl border px-4 py-4 text-left transition-all ${
+                              selectedAnswers[activeQuestionIndex] === index
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-primary/40 hover:bg-accent"
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-5 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleNextQuestion}
+                          className="rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground transition-all hover:bg-primary/90"
+                        >
+                          {activeQuestionIndex === quizQuestions.length - 1 ? "Тестті аяқтау" : "Келесі сұрақ"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Осы курсқа байланысты материалды қарап, кейін 10 сұрақтық тестті бастап біліміңізді тексеріңіз.
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+                <h2 className="mb-6 flex items-center gap-2 text-3xl font-bold">
                   <Award className="h-8 w-8 text-primary" />
                   Оқытушы
                 </h2>
@@ -293,31 +527,23 @@ export function CourseDetail() {
               </div>
 
               <div className="rounded-xl border border-border bg-card p-6">
-                <h3 className="mb-4 flex items-center gap-2 text-xl font-bold">
-                  <FileText className="h-5 w-5 text-primary" />
-                  Материалдар
-                </h3>
-                <div className="space-y-3">
-                  {(course.materials && course.materials.length > 0) ? (
-                    course.materials.map((material) => (
-                      <a
-                        key={`${material.name}-${material.url}`}
-                        href={material.url}
-                        download={material.name}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors hover:border-primary/50 hover:bg-accent"
-                      >
-                        <div>
-                          <div className="font-medium">{material.name}</div>
-                          <div className="text-xs text-muted-foreground">{material.sizeLabel}</div>
-                        </div>
-                        <Download className="h-4 w-4 text-primary" />
-                      </a>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Бұл курсқа материалдар әлі жүктелмеген.</p>
-                  )}
+                <h3 className="mb-4 text-xl font-bold">Тест туралы</h3>
+                <div className="space-y-4 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-between">
+                    <span>Сұрақ саны</span>
+                    <span className="font-semibold text-foreground">{quizQuestions.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Бір сұрақ уақыты</span>
+                    <span className="font-semibold text-foreground">1 минут</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Формат</span>
+                    <span className="font-semibold text-foreground">Бір жауап таңдау</span>
+                  </div>
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    Тест осы курс тақырыбы, модульдері және материалдары негізінде автоматты дайындалады.
+                  </div>
                 </div>
               </div>
             </div>

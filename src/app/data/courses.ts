@@ -1,14 +1,14 @@
+import {
+  createCourseMaterial,
+  generateCourseQuiz,
+  type CourseMaterial,
+  type CourseQuizQuestion,
+} from "./courseContent";
+
 export type SyllabusWeek = {
   week: string;
   title: string;
   lessons: string[];
-};
-
-export type CourseMaterial = {
-  name: string;
-  url: string;
-  type: string;
-  sizeLabel: string;
 };
 
 export type Course = {
@@ -27,6 +27,7 @@ export type Course = {
   features: string[];
   syllabus: SyllabusWeek[];
   materials?: CourseMaterial[];
+  quiz?: CourseQuizQuestion[];
   instructor: {
     name: string;
     title: string;
@@ -151,14 +152,7 @@ export const baseCourses: Course[] = [
       "Практикалық жобалар",
       "Қоғамдастық чаты",
     ],
-    materials: [
-      {
-        name: "python-basics-roadmap.pdf",
-        url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-        type: "application/pdf",
-        sizeLabel: "PDF",
-      },
-    ],
+    materials: [],
   },
   {
     id: "data-science",
@@ -346,6 +340,14 @@ function canUseStorage() {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
 }
 
+function normalizeCourse(course: Course): Course {
+  return {
+    ...course,
+    materials: course.materials && course.materials.length > 0 ? course.materials : [createCourseMaterial(course)],
+    quiz: course.quiz && course.quiz.length > 0 ? course.quiz : generateCourseQuiz(course),
+  };
+}
+
 export function slugifyCourseTitle(title: string) {
   return title
     .toLowerCase()
@@ -362,14 +364,14 @@ export function getStoredCourses(): Course[] {
 
   try {
     const raw = localStorage.getItem(COURSES_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Course[]) : [];
+    return raw ? (JSON.parse(raw) as Course[]).map(normalizeCourse) : [];
   } catch {
     return [];
   }
 }
 
 export function getAllCourses(): Course[] {
-  return [...baseCourses, ...getStoredCourses()];
+  return [...baseCourses.map(normalizeCourse), ...getStoredCourses()];
 }
 
 export function getCourseById(id?: string) {
@@ -382,7 +384,7 @@ export function saveCustomCourse(course: Course) {
   }
 
   const storedCourses = getStoredCourses();
-  const nextCourses = [course, ...storedCourses.filter((item) => item.id !== course.id)];
+  const nextCourses = [normalizeCourse(course), ...storedCourses.filter((item) => item.id !== course.id)];
   localStorage.setItem(COURSES_STORAGE_KEY, JSON.stringify(nextCourses));
   window.dispatchEvent(new Event("courses-updated"));
 }

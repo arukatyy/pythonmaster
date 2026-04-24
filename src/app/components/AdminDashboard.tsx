@@ -268,7 +268,12 @@ export function AdminDashboard() {
   };
 
   const handleMaterialFilesChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setMaterialFiles(Array.from(e.target.files ?? []));
+    const nextFiles = Array.from(e.target.files ?? []).filter((file) => file.type === "application/pdf");
+    setMaterialFiles(nextFiles);
+
+    if (nextFiles.length !== Array.from(e.target.files ?? []).length) {
+      toast.error("Материал ретінде тек PDF файл жүктеуге болады");
+    }
   };
 
   const handleSettingsChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -317,6 +322,10 @@ export function AdminDashboard() {
 
       if (materialFiles.some((file) => file.size > 2 * 1024 * 1024)) {
         throw new Error("Материал файлдарының әрқайсысы 2 MB-тан аспауы керек");
+      }
+
+      if (materialFiles.some((file) => file.type !== "application/pdf")) {
+        throw new Error("Материал ретінде тек PDF файл жүктеуге болады");
       }
 
       const uploadedImage = imageFile ? await fileToDataUrl(imageFile) : formData.imageUrl.trim();
@@ -607,7 +616,7 @@ export function AdminDashboard() {
 
                 <div className="md:col-span-2 rounded-xl border border-dashed border-border p-4">
                   <label className="mb-2 flex items-center gap-2 text-sm font-semibold"><Upload className="h-4 w-4 text-primary" /> Материалдар жүктеу</label>
-                  <input type="file" multiple onChange={handleMaterialFilesChange} className="block w-full text-sm text-muted-foreground" />
+                  <input type="file" accept="application/pdf" multiple onChange={handleMaterialFilesChange} className="block w-full text-sm text-muted-foreground" />
                   {materialFiles.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {materialFiles.map((file) => (
@@ -643,7 +652,7 @@ export function AdminDashboard() {
                 </div>
                 <div className="rounded-lg border border-border bg-background p-4">
                   <div className="mb-2 font-semibold text-foreground">Материалдар</div>
-                  <p>PDF, DOCX, ZIP секілді файлдар курс бетінде жүктелетін болады.</p>
+                  <p>Тек PDF жүктеледі және курс бетінде сол PDF тікелей ашылып көрсетіледі.</p>
                 </div>
               </div>
             </motion.section>

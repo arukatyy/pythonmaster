@@ -19,7 +19,7 @@ export type RegisterUserInput = {
   password: string;
 };
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "http://localhost:4000";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "";
 
 type ApiResponse<T> = {
   ok: boolean;
@@ -27,21 +27,29 @@ type ApiResponse<T> = {
 } & T;
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+    });
 
-  const payload = (await response.json()) as ApiResponse<T>;
+    const payload = (await response.json()) as ApiResponse<T>;
 
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.message || "Серверден жауап алу мүмкін болмады");
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message || "Серверден жауап алу мүмкін болмады");
+    }
+
+    return payload;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Серверге қосылу мүмкін болмады. Backend server-ді `npm run server` арқылы іске қосыңыз.");
+    }
+
+    throw error;
   }
-
-  return payload;
 }
 
 export async function fetchUsers() {

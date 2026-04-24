@@ -41,7 +41,7 @@ export function AdminLogin() {
               <input
                 value={login}
                 onChange={(event) => setLogin(event.target.value)}
-                placeholder="admin"
+                placeholder="Логин"
                 className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-3 outline-none transition-colors focus:border-primary"
               />
             </div>
@@ -55,7 +55,7 @@ export function AdminLogin() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="123"
+                placeholder="Пароль"
                 className="w-full rounded-lg border border-border bg-background py-3 pl-10 pr-3 outline-none transition-colors focus:border-primary"
               />
             </div>
